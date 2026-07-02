@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Genesys Messaging UI</title>
+  <style>
+    * { margin: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: #f7f7f7;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .chat {
+      font: 16px/1.5 sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+      padding: 20px;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    #connectionSettings {
+      flex-shrink: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #eee;
+    }
+    #connectionSettings label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    #connectionSettings select,
+    #connectionSettings input[type="text"] {
+      padding: 4px 8px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    #connectionSettings input[type="text"] { width: 260px; }
+    #connectionSettings select:disabled,
+    #connectionSettings input:disabled {
+      background: #f0f0f0;
+      color: #888;
+      cursor: not-allowed;
+    }
+
+    #controls {
+      flex-shrink: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    #controls label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    #controls input[type="number"],
+    #controls input[type="text"] {
+      padding: 4px 8px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    #controls input[type="number"] { width: 60px; }
+
+    #debugControls { display: none; }
+    .chat.debug-mode #debugControls { display: contents; }
+
+    #connectionStatus {
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+    #connectionStatus.status-disconnected { background: #eee; color: #666; }
+    #connectionStatus.status-connecting { background: #fff3cd; color: #8a6d3b; }
+    #connectionStatus.status-connected { background: #d4edda; color: #2e7d32; }
+    #connectionStatus.status-error { background: #f8d7da; color: #c62828; }
+
+    button {
+      background: #42a5f5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    button:hover { background: #1e88e5; }
+    button:active { background: #1565c0; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+
+    .panels {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .chat.debug-mode .panels {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      grid-template-rows: 1fr;
+      gap: 12px;
+    }
+    .message-column {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .side-panels { display: none; }
+    .chat.debug-mode .side-panels {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    #messages {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 15px 10px 10px;
+      margin: 0;
+      border-top: 1px solid #ccc;
+      border-bottom: 1px solid #ccc;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .msg {
+      position: relative;
+      max-width: 75%;
+      padding: 7px 15px;
+      margin: 4px 0;
+      word-break: break-word;
+    }
+    .msg.sent {
+      border-radius: 0 16px 16px 16px;
+      background: #f1f1f1;
+      color: #555;
+      margin-right: auto;
+      text-align: left;
+    }
+    .msg.agent,
+    .msg.bot {
+      border-radius: 16px 0 16px 16px;
+      background: #42a5f5;
+      color: #fff;
+      margin-left: auto;
+      text-align: right;
+    }
+    .msg.systemMsg {
+      font: 16px/1.5 sans-serif;
+      font-style: italic;
+      padding: 0;
+      margin-left: auto;
+      max-width: 100%;
+      color: #666;
+    }
+    .msg.systemMsg.errorMsg {
+      color: #c62828;
+      font-weight: 600;
+    }
+
+    .msg::before {
+      content: attr(data-time);
+      font-size: 0.8rem;
+      position: absolute;
+      bottom: 100%;
+      color: #888;
+      white-space: nowrap;
+      display: none;
+    }
+    .msg.agent::before,
+    .msg.bot::before,
+    .msg.systemMsg::before {
+      right: 15px;
+      left: auto;
+    }
+    .msg.sent::before {
+      left: 15px;
+      right: auto;
+    }
+
+    .msg:first-child::before,
+    .msg:not(.sent) + .msg.sent::before,
+    .msg:not(.agent) + .msg.agent::before,
+    .msg:not(.bot) + .msg.bot::before,
+    .msg:not(.systemMsg) + .msg.systemMsg::before {
+      display: block;
+    }
+
+    #typing-status,
+    #timer {
+      flex-shrink: 0;
+    }
+
+    #input-area {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    input[type="text"]:focus {
+      border-color: #42a5f5;
+      box-shadow: 0 0 5px rgba(66,165,245,0.5);
+      outline: none;
+    }
+
+    input[type="file"] { display: none; }
+    .custom-file-upload {
+      display: inline-block;
+      padding: 6px 12px;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #f1f1f1;
+      transition: background-color 0.3s;
+      font-size: 1rem;
+      color: #333;
+    }
+    .custom-file-upload:hover { background: #e0e0e0; }
+
+    #historyPanel {
+      flex: 1 1 0;
+      min-height: 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 12px;
+      background: #fafafa;
+      overflow-y: auto;
+    }
+    #historyPanel h2 {
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    .history-entry {
+      border: 1px solid #e1e1e1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      margin-bottom: 10px;
+      font: 0.92rem sans-serif;
+      cursor: pointer;
+    }
+    .history-entry:hover { background: #f5f5f5; }
+    .history-entry .row {
+      margin-top: 4px;
+      color: #444;
+      word-break: break-word;
+    }
+    .history-entry .meta {
+      color: #666;
+      font-size: 0.85rem;
+    }
+    .history-entry.pending { border-left: 4px solid #f0ad4e; }
+    .history-entry.done { border-left: 4px solid #4caf50; }
+    .history-entry.error { border-left: 4px solid #e53935; }
+
+    .history-entry .summary-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .history-entry .toggle-icon {
+      flex-shrink: 0;
+      width: 10px;
+      color: #888;
+      font-size: 0.75rem;
+    }
+    .history-entry .summary-sent {
+      flex-shrink: 0;
+      color: #666;
+      font-size: 0.8rem;
+    }
+    .history-entry .summary-content {
+      flex: 1;
+      min-width: 0;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .history-empty {
+      color: #888;
+      font-style: italic;
+    }
+
+    #attrSearchPanel {
+      flex: 1 1 0;
+      min-height: 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 12px;
+      background: #fafafa;
+      overflow-y: auto;
+    }
+    #attrSearchPanel h2 {
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+    #attrSearchContent {
+      font-size: 0.9rem;
+      color: #444;
+    }
+    .attr-search-block {
+      border: 1px solid #e1e1e1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .attr-search-block .row {
+      margin-top: 4px;
+      color: #444;
+      word-break: break-word;
+    }
+    .attr-search-block .participant-block {
+      margin-top: 8px;
+      border-top: 1px solid #eee;
+      padding-top: 8px;
+    }
+    .attr-search-block .participant-block .meta {
+      font-size: 0.85rem;
+      color: #666;
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+    .attr-search-block .kv-pair {
+      display: flex;
+      gap: 6px;
+      font-size: 0.88rem;
+      color: #333;
+    }
+    .attr-search-block .kv-pair span:first-child {
+      color: #888;
+      min-width: 120px;
+    }
+    .attr-search-empty {
+      color: #888;
+      font-style: italic;
+    }
+
+    #customAttrsSection {
+      display: none;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px;
+      background: #fafafa;
+    }
+    .chat.debug-mode #customAttrsSection { display: block; }
+    #customAttrsSection h3 {
+      font-size: 0.95rem;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #customAttrsSection h3 button {
+      font-size: 0.8rem;
+      padding: 3px 10px;
+    }
+    #attrRows {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .attr-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .attr-row input {
+      flex: 1;
+      padding: 5px 8px;
+      font-size: 0.9rem;
+    }
+    .attr-row button {
+      padding: 4px 10px;
+      font-size: 0.85rem;
+      background: #e53935;
+      flex-shrink: 0;
+    }
+    .attr-row button:hover { background: #b71c1c; }
+    #addAttrBtn {
+      font-size: 0.85rem;
+      padding: 5px 12px;
+      background: #66bb6a;
+    }
+    #addAttrBtn:hover { background: #388e3c; }
+  </style>
+</head>
+<body>
+  <div class="chat">
+    <div id="connectionSettings">
+      <label>
+        Region:
+        <select id="regionSelect"></select>
+      </label>
+      <label>
+        Deployment ID:
+        <input type="text" id="deploymentIdInput" placeholder="deployment id" autocomplete="off">
+      </label>
+    </div>
+
+    <div id="controls">
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn">Disconnect</button>
+      <span id="connectionStatus" class="status-disconnected">Disconnected</span>
+
+      <label>
+        <input type="checkbox" id="autoPresenceChk">
+        Auto-clear presence after
+        <input type="number" id="presenceInterval" min="1" value="60">
+        seconds
+      </label>
+
+      <label>
+        <input type="checkbox" id="debugModeChk">
+        Debug mode
+      </label>
+
+      <div id="debugControls">
+        <label>
+          API token:
+          <input
+            type="text"
+            id="apiTokenInput"
+            placeholder="bearer token"
+            autocomplete="off"
+            style="width: 320px;"
+          >
+        </label>
+      </div>
+    </div>
+
+    <div class="panels">
+      <div class="message-column">
+        <div id="messages"></div>
+        <div id="typing-status"></div>
+        <div id="timer">Time since last message: 00:00</div>
+
+        <div id="input-area">
+          <input type="text" id="messageInput" placeholder="Type your message…" autocomplete="off">
+          <button id="sendBtn">Send</button>
+          <label for="attachmentInput" class="custom-file-upload">
+            <i class="fa fa-cloud-upload"></i> Enviar Anexo
+          </label>
+          <input type="file" id="attachmentInput">
+
+          <div id="customAttrsSection">
+            <h3>
+              Custom Attributes
+              <button id="toggleAttrsBtn">Hide</button>
+            </h3>
+            <div id="attrRows"></div>
+            <button id="addAttrBtn">+ Add attribute</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-panels">
+        <aside id="historyPanel">
+          <h2>Message history</h2>
+          <div id="historyList" class="history-empty">No messages yet.</div>
+        </aside>
+
+        <aside id="attrSearchPanel">
+          <h2>Attribute Search <button id="attrSearchBtn" style="font-size:0.8rem;padding:4px 10px;">Search</button></h2>
+          <div id="attrSearchContent" class="attr-search-empty">No results yet.</div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let ws;
+    const sessionToken = generateGUID();
+    const pendingMessages = {};
+    const messageHistory = new Map();
+
+    // Region / deployment configuration (persisted in localStorage)
+    const GC_REGIONS = [
+      { label: "Americas (US East - N. Virginia)", value: "mypurecloud.com" },
+      { label: "Americas (US East 2 - N. Virginia, FedRAMP)", value: "use2.us-gov-pure.cloud" },
+      { label: "Americas (US West - Oregon)", value: "usw2.pure.cloud" },
+      { label: "Americas (Canada - Montreal)", value: "cac1.pure.cloud" },
+      { label: "Americas (São Paulo)", value: "sae1.pure.cloud" },
+      { label: "EMEA (Dublin)", value: "mypurecloud.ie" },
+      { label: "EMEA (London)", value: "euw2.pure.cloud" },
+      { label: "EMEA (Frankfurt)", value: "mypurecloud.de" },
+      { label: "EMEA (Zurich)", value: "euc2.pure.cloud" },
+      { label: "Asia Pacific (Mumbai)", value: "aps1.pure.cloud" },
+      { label: "Asia Pacific (Seoul)", value: "apne2.pure.cloud" },
+      { label: "Asia Pacific (Osaka)", value: "apne3.pure.cloud" },
+      { label: "Asia Pacific (Tokyo)", value: "mypurecloud.jp" },
+      { label: "Asia Pacific (Sydney)", value: "mypurecloud.com.au" },
+      { label: "Middle East (UAE)", value: "mec1.pure.cloud" }
+    ];
+
+    // DOM refs
+    const chatEl = document.querySelector(".chat");
+    const regionSelect = document.getElementById("regionSelect");
+    const deploymentIdInput = document.getElementById("deploymentIdInput");
+    const debugModeChk = document.getElementById("debugModeChk");
+    const connectionStatus = document.getElementById("connectionStatus");
+    const chk = document.getElementById("autoPresenceChk");
+    const intervalInput = document.getElementById("presenceInterval");
+    const timerDiv = document.getElementById("timer");
+    const apiTokenInput = document.getElementById("apiTokenInput");
+    const historyList = document.getElementById("historyList");
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const sendBtn = document.getElementById("sendBtn");
+    const messageInput = document.getElementById("messageInput");
+    const attachmentInput = document.getElementById("attachmentInput");
+    const messagesDiv = document.getElementById("messages");
+    const typingStatus = document.getElementById("typing-status");
+
+    let timerInterval, lastSendTime = null, presenceSent = false;
+
+    GC_REGIONS.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r.value;
+      opt.textContent = r.label;
+      regionSelect.appendChild(opt);
+    });
+
+    regionSelect.value = localStorage.getItem("gcRegion") || "sae1.pure.cloud";
+    deploymentIdInput.value = localStorage.getItem("gcDeploymentId");
+    debugModeChk.checked = localStorage.getItem("gcDebugMode") === "1";
+    chatEl.classList.toggle("debug-mode", debugModeChk.checked);
+
+    regionSelect.addEventListener("change", () => localStorage.setItem("gcRegion", regionSelect.value));
+    deploymentIdInput.addEventListener("input", () => {
+      localStorage.setItem("gcDeploymentId", deploymentIdInput.value.trim());
+      updateConnectAvailability();
+    });
+    debugModeChk.addEventListener("change", () => {
+      localStorage.setItem("gcDebugMode", debugModeChk.checked ? "1" : "0");
+      chatEl.classList.toggle("debug-mode", debugModeChk.checked);
+    });
+
+    function getWsUrl() {
+      return `wss://webmessaging.${regionSelect.value}/v1?deploymentId=${deploymentIdInput.value.trim()}`;
+    }
+
+    function getApiBaseUrl() {
+      return `https://api.${regionSelect.value}`;
+    }
+
+    let connectionState = "disconnected";
+    let lastCloseWasError = false;
+
+    function setConnectionStatus(state) {
+      connectionState = state;
+      connectionStatus.textContent =
+        state === "connected" ? "Connected" :
+        state === "connecting" ? "Connecting…" :
+        state === "error" ? "Connection error" : "Disconnected";
+      connectionStatus.className = `status-${state}`;
+
+      const locked = state === "connecting" || state === "connected";
+      regionSelect.disabled = locked;
+      deploymentIdInput.disabled = locked;
+      disconnectBtn.disabled = !locked;
+      updateConnectAvailability();
+    }
+
+    function updateConnectAvailability() {
+      const hasDeploymentId = deploymentIdInput.value.trim().length > 0;
+      const busy = connectionState === "connecting" || connectionState === "connected";
+      connectBtn.disabled = busy || !hasDeploymentId;
+    }
+
+    setConnectionStatus("disconnected");
+
+    function pad(n) {
+      return n.toString().padStart(2, "0");
+    }
+
+    function formatClockTime(date) {
+      return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      });
+    }
+
+    function formatMs(ms) {
+      if (ms == null) return "—";
+      return `${ms} ms`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function generateGUID() {
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        const v = c === "x" ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    function appendMessage(sender, text, isError = false) {
+      const m = document.createElement("div");
+      m.classList.add("msg");
+
+      if (sender === "You") {
+        m.classList.add("sent");
+      } else if (sender === "System") {
+        m.classList.add("systemMsg");
+      } else if (sender === "Bot") {
+        m.classList.add("bot");
+      } else {
+        m.classList.add("agent");
+      }
+
+      if (isError) m.classList.add("errorMsg");
+
+      m.setAttribute(
+        "data-time",
+        `${sender} - ${new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        })}`
+      );
+
+      m.textContent = text;
+      messagesDiv.appendChild(m);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function updateHistoryPanel() {
+      const entries = [...messageHistory.values()].reverse();
+
+      if (!entries.length) {
+        historyList.className = "history-empty";
+        historyList.textContent = "No messages yet.";
+        return;
+      }
+
+      historyList.className = "";
+      historyList.innerHTML = entries.map(entry => {
+        const statusClass = entry.responseReceivedAt
+          ? "done"
+          : entry.error
+            ? "error"
+            : "pending";
+
+        const sentLabel = entry.sentAt ? formatClockTime(entry.sentAt) : "—";
+        const recvLabel = entry.responseReceivedAt ? formatClockTime(entry.responseReceivedAt) : "—";
+        const rttLabel = (entry.sentAt && entry.responseReceivedAt)
+          ? formatMs(entry.responseReceivedAt - entry.sentAt)
+          : "—";
+        const convRttLabel = (entry.sentAt && entry.conversationIdReceivedAt)
+          ? formatMs(entry.conversationIdReceivedAt - entry.sentAt)
+          : "—";
+
+        if (entry.collapsed) {
+          return `
+            <div class="history-entry ${statusClass}" data-id="${escapeHtml(entry.id)}">
+              <div class="summary-row">
+                <span class="toggle-icon">▸</span>
+                <span class="summary-sent">${sentLabel}</span>
+                <span class="summary-content">${escapeHtml(entry.content)}</span>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="history-entry ${statusClass}" data-id="${escapeHtml(entry.id)}">
+            <div class="summary-row">
+              <span class="toggle-icon">▾</span>
+              <span class="meta"><strong>${escapeHtml(entry.direction)}</strong> · ${escapeHtml(entry.kind)}</span>
+            </div>
+            <div class="row"><strong>Content:</strong> ${escapeHtml(entry.content)}</div>
+            <div class="row"><strong>Message ID:</strong> ${entry.messageId ? escapeHtml(entry.messageId) : "—"}</div>
+            <div class="row"><strong>Conversation ID:</strong> ${entry.conversationId ? escapeHtml(entry.conversationId) : "—"}</div>
+            <div class="row"><strong>Sent:</strong> ${sentLabel}</div>
+            <div class="row"><strong>Response received:</strong> ${recvLabel}</div>
+            <div class="row"><strong>Elapsed:</strong> ${rttLabel}</div>
+            <div class="row"><strong>Conversation ID elapsed:</strong> ${convRttLabel}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    historyList.addEventListener("click", e => {
+      const entryEl = e.target.closest(".history-entry");
+      if (!entryEl) return;
+      const entry = messageHistory.get(entryEl.dataset.id);
+      if (!entry) return;
+      entry.collapsed = !entry.collapsed;
+      updateHistoryPanel();
+    });
+
+    function addHistoryEntry({ id, direction, kind, content, sentAt }) {
+      messageHistory.set(id, {
+        id,
+        direction,
+        kind,
+        content,
+        sentAt,
+        responseReceivedAt: null,
+        error: false,
+        messageId: null,
+        conversationId: null,
+        collapsed: true
+      });
+      updateHistoryPanel();
+    }
+
+    function markHistoryReceived(id, messageId) {
+      const entry = messageHistory.get(id);
+      if (!entry) return;
+      entry.responseReceivedAt = new Date();
+      if (messageId) entry.messageId = messageId;
+      updateHistoryPanel();
+    }
+
+    function markHistoryError(id) {
+      const entry = messageHistory.get(id);
+      if (!entry) return;
+      entry.error = true;
+      updateHistoryPanel();
+    }
+
+    function showTyping(sender) {
+      typingStatus.textContent = `${sender} is typing...`;
+      setTimeout(() => typingStatus.textContent = "", 2000);
+    }
+
+    function startTimer() {
+      lastSendTime = Date.now();
+      presenceSent = false;
+      updateTimer();
+      clearInterval(timerInterval);
+      timerInterval = setInterval(updateTimer, 1000);
+    }
+
+    function updateTimer() {
+      if (!lastSendTime) return;
+
+      const diff = Date.now() - lastSendTime;
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      timerDiv.textContent = `Time since last message: ${pad(mins)}:${pad(secs)}`;
+
+      const threshold = parseInt(intervalInput.value, 10) || 60;
+      if (chk.checked && !presenceSent && diff >= threshold * 1000) {
+        presenceSent = true;
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const tracingId = generateGUID();
+          ws.send(JSON.stringify({
+            action: "onMessage",
+            token: sessionToken,
+            tracingId,
+            message: {
+              type: "Event",
+              events: [{ eventType: "Presence", presence: { type: "Clear" } }]
+            }
+          }));
+          appendMessage("System", "Auto-sent Presence Clear");
+        }
+      }
+    }
+
+    function registerOutgoingMessage({ tracingId, kind, content }) {
+      pendingMessages[tracingId] = true;
+      addHistoryEntry({
+        id: tracingId,
+        direction: "Sent",
+        kind,
+        content,
+        sentAt: new Date()
+      });
+      startTimer();
+    }
+
+    const attrSearchContent = document.getElementById("attrSearchContent");
+    const attrSearchBtn = document.getElementById("attrSearchBtn");
+    let lastConversationId = null;
+
+    attrSearchBtn.onclick = () => {
+      if (!lastConversationId) {
+        attrSearchContent.className = "attr-search-empty";
+        attrSearchContent.textContent = "No conversation ID available yet.";
+        return;
+      }
+      fetchAttributeSearch(lastConversationId);
+    };
+
+    function showAttrSearch(payload) {
+      const results = payload?.results;
+      if (!results || !results.length) {
+        attrSearchContent.className = "attr-search-empty";
+        attrSearchContent.textContent = "No results found.";
+        return;
+      }
+
+      attrSearchContent.className = "";
+      attrSearchContent.innerHTML = results.map(r => {
+        const participants = (r.participantData || []).map(p => {
+          const attrs = p.participantAttributes
+            ? Object.entries(p.participantAttributes).map(([k, v]) => `
+                <div class="kv-pair"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>
+              `).join("")
+            : "<em>none</em>";
+
+          return `
+            <div class="participant-block">
+              <div class="meta">Participant · ${escapeHtml(p.participantPurpose || "—")}</div>
+              <div class="row"><strong>Attributes:</strong></div>
+              ${attrs}
+            </div>
+          `;
+        }).join("");
+
+        return `
+          <div class="attr-search-block">
+            <div class="row"><strong>Conversation ID:</strong> ${escapeHtml(r.conversationId || "—")}</div>
+            <div class="row"><strong>Start Time:</strong> ${escapeHtml(r.startTime || "—")}</div>
+            <div class="row"><strong>End Time:</strong> ${escapeHtml(r.endTime || "—")}</div>
+            ${participants}
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function fetchAttributeSearch(conversationId) {
+      const token = apiTokenInput.value.trim();
+      if (!token) return;
+
+      const url = `${getApiBaseUrl()}/api/v2/conversations/participants/attributes/search`;
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Authorization": `bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            query: [{
+              type: "EXACT",
+              fields: ["conversationId"],
+              values: [conversationId]
+            }]
+          })
+        });
+
+        const text = await res.text();
+        try {
+          const json = JSON.parse(text);
+          showAttrSearch(json);
+        } catch {
+          attrSearchContent.className = "attr-search-empty";
+          attrSearchContent.textContent = `Error: ${res.status} ${res.statusText}`;
+        }
+      } catch (err) {
+        attrSearchContent.className = "attr-search-empty";
+        attrSearchContent.textContent = `Error: ${String(err)}`;
+      }
+    }
+
+    async function fetchConversationDetails(messageId, tracingId) {
+      const token = apiTokenInput.value.trim();
+      if (!token) return;
+
+      const url = `${getApiBaseUrl()}/api/v2/conversations/messages/${encodeURIComponent(messageId)}/details`;
+
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Authorization": `bearer ${token}`,
+            "Content-Type": "application/json"
+          }
+        });
+
+        const text = await res.text();
+        let json;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          return;
+        }
+
+        if (tracingId && json.conversationId) {
+          const entry = messageHistory.get(tracingId);
+          if (entry) {
+            entry.conversationId = json.conversationId;
+            entry.conversationIdReceivedAt = new Date();
+            updateHistoryPanel();
+          }
+          lastConversationId = json.conversationId;
+        }
+      } catch {
+        // network/fetch error — nothing to surface without the raw panel
+      }
+    }
+
+    let lastFetchContext = null;
+
+    apiTokenInput.addEventListener("change", () => {
+      if (!lastFetchContext || !apiTokenInput.value.trim()) return;
+      fetchConversationDetails(lastFetchContext.messageId, lastFetchContext.tracingId);
+    });
+
+    function handleStructuredMessage(data) {
+      const body = data?.body;
+      const tracingId = data?.tracingId;
+
+      if (debugModeChk.checked && data.code === 200 && body?.direction === "Inbound" && body?.id) {
+        lastFetchContext = { messageId: body.id, tracingId };
+        setTimeout(() => fetchConversationDetails(body.id, tracingId), 100);
+      }
+
+      if (body?.type === "Event" && body.direction === "Outbound") {
+        const pe = Array.isArray(body.events)
+          ? body.events.find(e => e.eventType === "Presence")
+          : null;
+
+        if (pe) {
+          appendMessage("System", `Presence: ${pe.presence?.type}`);
+        } else if (Array.isArray(body.events) && body.events.find(e => e.eventType === "Typing")) {
+          showTyping("Agent");
+        }
+      } else if (body?.type === "Text" && body.direction === "Outbound") {
+        let sender;
+        const ent = body.originatingEntity;
+        const nick = body.channel?.from?.nickname;
+
+        if (ent === "Bot") sender = nick || "Bot";
+        else if (ent === "Human") sender = nick || "Agent";
+        else sender = nick || ent || "Unknown";
+
+        appendMessage(sender, body.text || "");
+      }
+    }
+
+    connectBtn.onclick = () => {
+      lastCloseWasError = false;
+      setConnectionStatus("connecting");
+      ws = new WebSocket(getWsUrl());
+
+      ws.onopen = () => {
+        setConnectionStatus("connected");
+        appendMessage("System", "Connected.");
+        ws.send(JSON.stringify({
+          action: "configureSession",
+          deploymentId: deploymentIdInput.value.trim(),
+          token: sessionToken
+        }));
+      };
+
+      ws.onmessage = evt => {
+        let data;
+        try {
+          data = JSON.parse(evt.data);
+        } catch {
+          return;
+        }
+
+        if (data.tracingId && pendingMessages[data.tracingId]) {
+          delete pendingMessages[data.tracingId];
+          const messageId = data?.body?.id;
+          markHistoryReceived(data.tracingId, messageId);
+        }
+
+        if (data.type === "response" && data.class === "SessionResponse") {
+          if (data.body?.connected) appendMessage("System", "Session ready.");
+          return;
+        }
+
+        if (data.type === "message" && data.class === "StructuredMessage") {
+          handleStructuredMessage(data);
+          return;
+        }
+      };
+
+      ws.onerror = () => {
+        lastCloseWasError = true;
+        appendMessage("System", "WebSocket error.", true);
+      };
+      ws.onclose = () => {
+        setConnectionStatus(lastCloseWasError ? "error" : "disconnected");
+        appendMessage("System", "Disconnected.");
+      };
+    };
+
+    disconnectBtn.onclick = () => {
+      if (ws) ws.close();
+    };
+
+    function sendMessage() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        appendMessage("System", "Not connected.");
+        return;
+      }
+
+      const txt = messageInput.value.trim();
+      if (!txt) return;
+
+      const tid = generateGUID();
+      registerOutgoingMessage({
+        tracingId: tid,
+        kind: "Text",
+        content: txt
+      });
+
+      const customAttributes = getCustomAttributes();
+      const message = {
+        type: "Text",
+        text: txt,
+        ...(customAttributes && {
+          channel: {
+            metadata: { customAttributes }
+          }
+        })
+      };
+
+      ws.send(JSON.stringify({
+        action: "onMessage",
+        token: sessionToken,
+        tracingId: tid,
+        message
+      }));
+
+      appendMessage("You", txt);
+      messageInput.value = "";
+    }
+
+    // Custom attributes
+    const attrRows = document.getElementById("attrRows");
+    const addAttrBtn = document.getElementById("addAttrBtn");
+    const toggleAttrsBtn = document.getElementById("toggleAttrsBtn");
+
+    function addAttrRow(key = "", value = "") {
+      const row = document.createElement("div");
+      row.className = "attr-row";
+      row.innerHTML = `
+        <input type="text" placeholder="Key" value="${escapeHtml(key)}">
+        <input type="text" placeholder="Value" value="${escapeHtml(value)}">
+        <button>✕</button>
+      `;
+      row.querySelector("button").onclick = () => row.remove();
+      attrRows.appendChild(row);
+    }
+
+    addAttrBtn.onclick = () => addAttrRow();
+
+    toggleAttrsBtn.onclick = () => {
+      const isHidden = attrRows.style.display === "none";
+      attrRows.style.display = isHidden ? "flex" : "none";
+      addAttrBtn.style.display = isHidden ? "inline-block" : "none";
+      toggleAttrsBtn.textContent = isHidden ? "Hide" : "Show";
+    };
+
+    function getCustomAttributes() {
+      const attrs = {};
+      attrRows.querySelectorAll(".attr-row").forEach(row => {
+        const [keyInput, valInput] = row.querySelectorAll("input");
+        const k = keyInput.value.trim();
+        const v = valInput.value.trim();
+        if (k) attrs[k] = v;
+      });
+      return Object.keys(attrs).length ? attrs : null;
+    }
+
+    sendBtn.onclick = sendMessage;
+    messageInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    attachmentInput.onchange = () => {
+      const file = attachmentInput.files[0];
+
+      if (!file || !ws || ws.readyState !== WebSocket.OPEN) {
+        appendMessage("System", "No file or disconnected.");
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        appendMessage("System", "File too large.");
+        return;
+      }
+
+      const tid = generateGUID();
+      registerOutgoingMessage({
+        tracingId: tid,
+        kind: "Attachment request",
+        content: file.name
+      });
+
+      ws.send(JSON.stringify({
+        action: "onAttachment",
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        tracingId: tid,
+        token: sessionToken
+      }));
+
+      function attachHandler(evt) {
+        let d;
+        try {
+          d = JSON.parse(evt.data);
+        } catch {
+          return;
+        }
+
+        if (d.type === "response" && d.class === "PresignedUrlResponse" && d.tracingId === tid) {
+          fetch(d.body.url, {
+            method: "PUT",
+            headers: d.body.headers,
+            body: file
+          }).catch(() => {
+            appendMessage("System", "Upload error.");
+            markHistoryError(tid);
+          });
+        }
+
+        if (d.type === "message" && d.class === "UploadSuccessEvent" && d.body?.attachmentId) {
+          const mid = generateGUID();
+          registerOutgoingMessage({
+            tracingId: mid,
+            kind: "Attachment send",
+            content: `Arquivo ${file.name} anexado.`
+          });
+
+          ws.send(JSON.stringify({
+            action: "onMessage",
+            token: sessionToken,
+            tracingId: mid,
+            message: {
+              type: "Text",
+              text: `Arquivo ${file.name} anexado.`,
+              content: [
+                {
+                  contentType: "Attachment",
+                  attachment: { id: d.body.attachmentId }
+                }
+              ]
+            }
+          }));
+
+          appendMessage("You", `Sent attachment: ${file.name}`);
+          ws.removeEventListener("message", attachHandler);
+        }
+      }
+
+      ws.addEventListener("message", attachHandler);
+    };
+  </script>
+</body>
+</html>
